@@ -7,32 +7,35 @@ const options = {
     flipped: true,
     runtime: "tfjs",
     modelType: "full",
-    detectorModelUrl: undefined, //default to use the tf.hub model
-    landmarkModelUrl: undefined, //default to use the tf.hub model
 }
 
 function preload() {
-  // Load the handPose model
   handPose = ml5.handPose(options);
 }
 
 function setup() {
   createCanvas(640, 480);
-  // Create the webcam video and hide it
-  video = createCapture(VIDEO, {flipped:true});
+  video = createCapture(VIDEO, { flipped: true });
   video.size(640, 480);
   video.hide();
-  // start detecting hands from the webcam video
   handPose.detectStart(video, gotHands);
-  
+
+  initializeCards();
 }
 
+let a = null;
+let b = null;
+let counter = 0;
+let allowClick = true;
+
 function draw() {
-  // Draw the webcam video
   image(video, 0, 0, width, height);
 
-  //Highlight landmark 4 and 8
-  if (hands.length > 0) {
+  for (let card of cards) {
+    card.show();
+  }
+
+  if (hands.length > 0 && allowClick) {
     let finger = hands[0].index_finger_tip;
     let thumb = hands[0].thumb_tip;
 
@@ -40,102 +43,111 @@ function draw() {
     noStroke();
     circle(finger.x, finger.y, 10);
     circle(thumb.x, thumb.y, 10);
-    
-    if ( (finger.x > 150) && (finger.x < 250) && (finger.y > 150) && (finger.y < 350) ) {
-      let length = dist(finger.x, finger.y, thumb.x, thumb.y);
-      stroke('magenta');
-      strokeWeight(5)
-      line(finger.x, thumb.x, finger.y, thumb.y)
 
-      // if (length <= 15) {
-        
-      // }
+    for (let card of cards) {
+      if (card.isHovered(finger)) {
+        let length = dist(finger.x, finger.y, thumb.x, thumb.y);
+
+        if (card.isFlipped || card.isMatched) {
+          console.log("cannot click");
+        } else {
+          console.log("clickable");
+          if (length < 20 && !card.isFlipped && !card.isMatched) {
+            flipCard(card);
+            counter += 1;
+
+            if (counter == 1) {
+              a = card;
+            } else if (counter == 2) {
+              b = card;
+              allowClick = false;  // Disable clicking
+
+              setTimeout(() => {
+                if (compare(a, b)) {
+                  console.log("matched");
+                  a.isMatched = true;
+                  b.isMatched = true;
+                } else {
+                  console.log("no match!");
+                  flipCard(a);
+                  flipCard(b);
+                }
+                counter = 0;
+                allowClick = true;
+              }, 1000);  // 1 second delay
+            }
+          }
+        }
+      }
     }
-
   }
-  fill(0, 0, 255, 127);
-  rect(100, 100, 100, 150);
 }
 
-// Callback function for when handPose outputs data
 function gotHands(results) {
-  // save the output to the hands variable
   hands = results;
 }
 
-// Class Object: Cards
-// Global functions
-
 class Card {
-  constructor(key, pos, size=[100,100]) {
-      this.key = key;
-      this.pos = pos
-      this.size = size
-      this.text = "";
-      this.color = (255,0,0);
-      this.isFlipped = true;
-      this.isMatched = false;
+  constructor(pos, key, size = [75, 75]) {
+    this.key = key;
+    this.pos = pos;
+    this.size = size;
+    this.isFlipped = false;
+    this.isMatched = false;
   }
 
-  //getter
-  get isFlipped(){
-    return this.isFlipped;
+  show() {
+    let x = this.pos[0];
+    let y = this.pos[1];
+    let w = this.size[0];
+    let h = this.size[1];
+
+    if (this.isMatched) {
+      fill(0, 255, 0);
+    } else if (this.isFlipped) {
+      fill(255, 0, 0);
+    } else {
+      fill(0, 0, 255);
+    }
+    rect(x, y, w, h);
+
+    if (this.isFlipped || this.isMatched) {
+      fill(255);
+      textSize(32);
+      textAlign(CENTER, CENTER);
+      text(this.key, x + w / 2, y + h / 2);
+    }
   }
 
-  get isMatched(){
-    return this.isMatched;
-  }
-
-  get key(){
-    return this.key;
-  }
-
-  //setter
-  set isFlipped(bool){
-    this.isFlipped = bool;
-  }
-
-  set text(string){
-    this.text = string;
-  }
-
-  set color(color){
-    this.color = color;
-  }
-
-  set isMatched(bool){
-    this.isMatched = bool;
-  }
-}
-
-function flipCard(Card){
-  if (Card.flipState){
-    Card.flipState(false);
-    Card.text("");
-    Card.color("blue");
-  } else {
-    Card.flipState(true);
-    Card.text(Card.key);
-    Card.color("red");
+  isHovered(finger) {
+    let x = this.pos[0];
+    let y = this.pos[1];
+    let w = this.size[0];
+    let h = this.size[1];
+    return finger.x > x && finger.x < x + w && finger.y > y && finger.y < y + h;
   }
 }
 
-function compare(Card1, Card2){
-  return Card1.key == Card2.key;
+let cards = [];
+
+function initializeCards() {
+  let keys = ["A", "B", "C", "D", "A", "B", "C", "D"];
+  keys = shuffle(keys);
+
+  let index = 0;
+  for (let i = 0; i < 2; i++) {
+    for (let j = 0; j < 4; j++) {
+      let pos = [j * 100 + 25, i * 100 + 25];
+      cards.push(new Card(pos, keys[index]));
+      index++;
+    }
+  }
 }
 
-function match(Card1, Card2){
-  if (compare(Card1, Card2)){
-    Card1.isMatched(true);
-    Card2.isMatched(true);
-    Card1.color("green");
-    Card2.color("green");
-    return true;
-  }
-  else {
-    return false;
-  }
+function flipCard(card) {
+  card.isFlipped = !card.isFlipped;
 }
 
-
-
+function compare(a, b) {
+  return a.key == b.key;
+}
