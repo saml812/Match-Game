@@ -24,6 +24,7 @@ function setup() {
   video.hide();
   // start detecting hands from the webcam video
   handPose.detectStart(video, gotHands);
+  
 }
 
 function draw() {
